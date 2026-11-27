@@ -1,6 +1,6 @@
 @baseUrl = http://localhost:3000
 
-### 1. Create a Product (POST with Image Upload)
+### 1. Create a Product (POST with multiple image uploads)
 POST {{baseUrl}}/api/products
 Content-Type: multipart/form-data; boundary=MyBoundary
 
@@ -25,15 +25,23 @@ Content-Disposition: form-data; name="sizes"
 
 [40, 42, 44]
 --MyBoundary
-Content-Disposition: form-data; name="image"; filename="shoes1.jpg"
+Content-Disposition: form-data; name="images"; filename="shoes1.jpg"
 Content-Type: image/jpeg
 
 < ./shirt.jpg
+--MyBoundary
+Content-Disposition: form-data; name="images"; filename="shoes2.jpg"
+Content-Type: image/jpeg
+
+< ./shoes2.jpg
 --MyBoundary--
 
 
 ### 2. Get All Products (GET with Optional Filters)
 GET {{baseUrl}}/api/products/4
+
+###
+GET {{baseUrl}}/api/products
 
 ### put {{baseUrl}}/api/products/4
 PUT {{baseUrl}}/api/products/4 HTTP/1.1
