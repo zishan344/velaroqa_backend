@@ -28,6 +28,8 @@ CREATE TABLE IF NOT EXISTS products (
 CREATE TABLE IF NOT EXISTS orders (
   id               INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   product_id       INT UNSIGNED NOT NULL,
+  quantity         INT UNSIGNED NOT NULL,
+  total_price      DECIMAL(10,2) NOT NULL,
   name             VARCHAR(150) NOT NULL,
   email            VARCHAR(254) NOT NULL,
   phone            VARCHAR(30) NOT NULL,
@@ -39,6 +41,14 @@ CREATE TABLE IF NOT EXISTS orders (
     FOREIGN KEY (product_id) REFERENCES products (id)
     ON UPDATE CASCADE
 ) ENGINE=InnoDB;
+
+-- For an existing orders table, run this migration once:
+-- ALTER TABLE orders
+--   ADD COLUMN quantity INT UNSIGNED NOT NULL DEFAULT 1,
+--   ADD COLUMN total_price DECIMAL(10,2) NOT NULL DEFAULT 0.00;
+-- UPDATE orders
+-- JOIN products ON products.id = orders.product_id
+-- SET orders.total_price = ROUND(products.price * orders.quantity, 2);
 
 INSERT INTO products (name, description, price, discount, sizes, images) VALUES
 ('Nike shoes', 'Comfortable and stylish athletic shoes.', 120.00, 10.00, '[40, 42, 44]', '[]'),

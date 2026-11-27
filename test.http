@@ -8,6 +8,8 @@ Content-Type: application/json
 
 {
   "product_id": {{productId}},
+  "quantity": 2,
+  "total_price": 240.00,
   "name": "Jane Doe",
   "email": "jane@example.com",
   "phone": "+1 555 0100",

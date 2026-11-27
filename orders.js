@@ -2,7 +2,7 @@ const express = require('express');
 
 const ORDER_STATUSES = ['pending', 'declined', 'confirmed'];
 
-function createOrdersRouter(pool, requireAdmin) {
+function createOrdersRouter(pool, requireAdmin, emailService) {
   const router = express.Router();
 
   router.post('/', async (req, res, next) => {
@@ -13,6 +13,17 @@ function createOrdersRouter(pool, requireAdmin) {
         : {};
       const { name, email, phone, delivery_address: deliveryAddress } = body;
       const productId = Number(body.product_id);
+      const quantityText =
+        typeof body.quantity === 'number' || typeof body.quantity === 'string' ?
+          String(body.quantity).trim()
+        : '';
+      const quantity = Number(quantityText);
+      const totalPriceText =
+        typeof body.total_price === 'number' ||
+        typeof body.total_price === 'string' ?
+          String(body.total_price).trim()
+        : '';
+      const totalPrice = Number(totalPriceText);
       const errors = [];
 
       if (typeof name !== 'string' || !name.trim() || name.trim().length > 150)
@@ -33,20 +44,41 @@ function createOrdersRouter(pool, requireAdmin) {
         errors.push('delivery_address is required');
       if (!Number.isSafeInteger(productId) || productId <= 0)
         errors.push('product_id must be a positive integer');
+      if (
+        !/^\d+$/.test(quantityText) ||
+        !Number.isSafeInteger(quantity) ||
+        quantity <= 0 ||
+        quantity > 4294967295
+      )
+        errors.push('quantity must be a positive integer');
+      if (
+        !/^\d{1,8}(?:\.\d{1,2})?$/.test(totalPriceText) ||
+        !Number.isFinite(totalPrice) ||
+        totalPrice > 99999999.99
+      )
+        errors.push(
+          'total_price must be a number from 0 to 99999999.99 with up to 2 decimal places',
+        );
 
       if (errors.length) return res.status(400).json({ errors });
 
       const [products] = await pool.query(
-        'SELECT id FROM products WHERE id = ?',
+        'SELECT id, name FROM products WHERE id = ?',
         [productId],
       );
       if (!products.length)
         return res.status(400).json({ error: 'Product not found' });
+      if (!emailService.isConfigured)
+        return res.status(503).json({
+          error: 'Order email notifications are not configured',
+        });
 
       const [result] = await pool.query(
-        'INSERT INTO orders (product_id, name, email, phone, delivery_address) VALUES (?, ?, ?, ?, ?)',
+        'INSERT INTO orders (product_id, quantity, total_price, name, email, phone, delivery_address) VALUES (?, ?, ?, ?, ?, ?, ?)',
         [
           productId,
+          quantity,
+          totalPrice.toFixed(2),
           name.trim(),
           email.trim(),
           phone.trim(),
@@ -56,7 +88,17 @@ function createOrdersRouter(pool, requireAdmin) {
       const [orders] = await pool.query('SELECT * FROM orders WHERE id = ?', [
         result.insertId,
       ]);
-      res.status(201).json(orders[0]);
+      const order = { ...orders[0], product_name: products[0].name };
+      try {
+        await emailService.sendNewOrderEmails(order);
+      } catch (error) {
+        console.error('Failed to send order creation emails:', error);
+        return res.status(502).json({
+          error: 'Order was created, but one or more notification emails failed',
+          order,
+        });
+      }
+      res.status(201).json(order);
     } catch (error) {
       next(error);
     }
@@ -93,11 +135,16 @@ function createOrdersRouter(pool, requireAdmin) {
         });
 
       const [existing] = await pool.query(
-        'SELECT id FROM orders WHERE id = ?',
+        'SELECT * FROM orders WHERE id = ?',
         [id],
       );
       if (!existing.length)
         return res.status(404).json({ error: 'Order not found' });
+      const previousStatus = existing[0].status;
+      if (previousStatus !== status && !emailService.isConfigured)
+        return res.status(503).json({
+          error: 'Order status email notifications are not configured',
+        });
 
       await pool.query('UPDATE orders SET status = ? WHERE id = ?', [
         status,
@@ -107,6 +154,17 @@ function createOrdersRouter(pool, requireAdmin) {
       const [orders] = await pool.query('SELECT * FROM orders WHERE id = ?', [
         id,
       ]);
+      if (previousStatus !== status) {
+        try {
+          await emailService.sendOrderStatusEmail(orders[0]);
+        } catch (error) {
+          console.error('Failed to send order status email:', error);
+          return res.status(502).json({
+            error: 'Order status was updated, but the notification email failed',
+            order: orders[0],
+          });
+        }
+      }
       res.json(orders[0]);
     } catch (error) {
       next(error);

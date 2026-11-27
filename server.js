@@ -7,6 +7,7 @@ const cors = require('cors');
 const multer = require('multer');
 const mysql = require('mysql2/promise');
 const createOrdersRouter = require('./orders');
+const createOrderEmailService = require('./order-emails');
 
 const app = express();
 app.use(cors());
@@ -76,7 +77,10 @@ function requireAdmin(req, res, next) {
   res.status(401).json({ error: 'Unauthorized' });
 }
 
-app.use('/api/orders', createOrdersRouter(pool, requireAdmin));
+app.use(
+  '/api/orders',
+  createOrdersRouter(pool, requireAdmin, createOrderEmailService()),
+);
 
 function validate(body, partial = false) {
   const errors = [];
