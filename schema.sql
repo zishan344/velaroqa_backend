@@ -25,6 +25,21 @@ CREATE TABLE IF NOT EXISTS products (
   updated_at  TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
+CREATE TABLE IF NOT EXISTS orders (
+  id               INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  product_id       INT UNSIGNED NOT NULL,
+  name             VARCHAR(150) NOT NULL,
+  email            VARCHAR(254) NOT NULL,
+  phone            VARCHAR(30) NOT NULL,
+  delivery_address TEXT NOT NULL,
+  status           ENUM('pending', 'declined', 'confirmed') NOT NULL DEFAULT 'pending',
+  created_at       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_orders_product
+    FOREIGN KEY (product_id) REFERENCES products (id)
+    ON UPDATE CASCADE
+) ENGINE=InnoDB;
+
 INSERT INTO products (name, description, price, discount, sizes, images) VALUES
 ('Nike shoes', 'Comfortable and stylish athletic shoes.', 120.00, 10.00, '[40, 42, 44]', '[]'),
 ('bata shoes', 'Comfortable and stylish athletic shoes.', 150.00, NULL, '[39, 41, 43]', '[]');

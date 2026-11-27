@@ -6,6 +6,7 @@ const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
 const mysql = require('mysql2/promise');
+const createOrdersRouter = require('./orders');
 
 const app = express();
 app.use(cors());
@@ -74,6 +75,8 @@ function requireAdmin(req, res, next) {
   if (header === `Bearer ${token}`) return next();
   res.status(401).json({ error: 'Unauthorized' });
 }
+
+app.use('/api/orders', createOrdersRouter(pool, requireAdmin));
 
 function validate(body, partial = false) {
   const errors = [];

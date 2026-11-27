@@ -1,4 +1,53 @@
 @baseUrl = http://localhost:3000
+@productId = 4
+
+### Create an order (requires an existing product_id)
+# @name createOrder
+POST {{baseUrl}}/api/orders
+Content-Type: application/json
+
+{
+  "product_id": {{productId}},
+  "name": "Jane Doe",
+  "email": "jane@example.com",
+  "phone": "+1 555 0100",
+  "delivery_address": "123 Main Street"
+}
+
+### Get all orders
+GET {{baseUrl}}/api/orders
+# If ADMIN_TOKEN is configured in .env, add:
+# Authorization: Bearer your-admin-token
+
+### Confirm the order created above
+PATCH {{baseUrl}}/api/orders/{{createOrder.response.body.$.id}}/status
+Content-Type: application/json
+# If ADMIN_TOKEN is configured in .env, add:
+# Authorization: Bearer your-admin-token
+
+{
+  "status": "confirmed"
+}
+
+### Decline the order created above
+PATCH {{baseUrl}}/api/orders/{{createOrder.response.body.$.id}}/status
+Content-Type: application/json
+# If ADMIN_TOKEN is configured in .env, add:
+# Authorization: Bearer your-admin-token
+
+{
+  "status": "declined"
+}
+
+### Invalid status (expected 400 Bad Request)
+PATCH {{baseUrl}}/api/orders/{{createOrder.response.body.$.id}}/status
+Content-Type: application/json
+# If ADMIN_TOKEN is configured in .env, add:
+# Authorization: Bearer your-admin-token
+
+{
+  "status": "shipped"
+}
 
 ### 1. Create a Product (POST with multiple image uploads)
 POST {{baseUrl}}/api/products
