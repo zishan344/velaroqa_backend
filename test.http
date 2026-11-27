@@ -1,5 +1,5 @@
-@baseUrl = http://localhost:3000
-@productId = 4
+@baseUrl = https://server.velaroqa.com
+@productId = 1
 
 ### Create an order (requires an existing product_id)
 # @name createOrder
@@ -9,9 +9,9 @@ Content-Type: application/json
 {
   "product_id": {{productId}},
   "quantity": 2,
-  "total_price": 240.00,
+  "total_price": 200.00,
   "name": "Jane Doe",
-  "email": "jane@example.com",
+  "email": "maroufulislam.zishan@gmail.com",
   "phone": "+1 555 0100",
   "delivery_address": "123 Main Street"
 }

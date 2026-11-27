@@ -66,7 +66,31 @@ const pool = mysql.createPool({
   connectionLimit: 10,
   ssl: { rejectUnauthorized: false },
 });
-
+app.get('/api/db-status', async (req, res) => {
+  const started = Date.now();
+  let conn;
+  try {
+    conn = await pool.getConnection();
+    const [rows] = await conn.query(
+      'SELECT 1 AS ok, VERSION() AS version, DATABASE() AS db',
+    );
+    res.json({
+      connected: true,
+      database: rows[0].db,
+      mysqlVersion: rows[0].version,
+      responseTimeMs: Date.now() - started,
+    });
+  } catch (err) {
+    res.status(500).json({
+      connected: false,
+      error: err.code || 'UNKNOWN',
+      message: err.message,
+      responseTimeMs: Date.now() - started,
+    });
+  } finally {
+    if (conn) conn.release();
+  }
+});
 // ---------- helpers ----------
 // Protects write routes. Set ADMIN_TOKEN in .env and send: Authorization: Bearer <token>
 function requireAdmin(req, res, next) {
@@ -189,7 +213,7 @@ app.get('/api/products', async (req, res, next) => {
   try {
     const limit = Math.min(Number(req.query.limit) || 50, 100);
     const offset = Number(req.query.offset) || 0;
-    const where = [];
+    const where = ['is_active = 1'];
     const params = [];
     if (req.query.search) {
       where.push('name LIKE ?');
@@ -212,9 +236,10 @@ app.get('/api/products', async (req, res, next) => {
 // Get one product
 app.get('/api/products/:id', async (req, res, next) => {
   try {
-    const [rows] = await pool.query('SELECT * FROM products WHERE id = ?', [
-      req.params.id,
-    ]);
+    const [rows] = await pool.query(
+      'SELECT * FROM products WHERE id = ? AND is_active = 1',
+      [req.params.id],
+    );
     if (!rows.length)
       return res.status(404).json({ error: 'Product not found' });
     res.json(toProduct(rows[0]));
@@ -259,9 +284,10 @@ app.post(
         ],
       );
       imagesSaved = true;
-      const [rows] = await pool.query('SELECT * FROM products WHERE id = ?', [
-        result.insertId,
-      ]);
+      const [rows] = await pool.query(
+        'SELECT * FROM products WHERE id = ? AND is_active = 1',
+        [result.insertId],
+      );
       res.status(201).json(toProduct(rows[0]));
     } catch (e) {
       if (!imagesSaved) await deleteImages(newImages); // do not leave orphan files if the insert failed
@@ -286,7 +312,7 @@ app.put(
         return res.status(400).json({ errors });
       }
       const [existing] = await pool.query(
-        'SELECT * FROM products WHERE id = ?',
+        'SELECT * FROM products WHERE id = ? AND is_active = 1',
         [id],
       );
       if (!existing.length) {
@@ -310,7 +336,7 @@ app.put(
         : req.body.discount;
 
       await pool.query(
-        'UPDATE products SET name=?, description=?, price=?, discount=?, sizes=?, images=? WHERE id=?',
+        'UPDATE products SET name=?, description=?, price=?, discount=?, sizes=?, images=? WHERE id=? AND is_active=1',
         [
           req.body.name !== undefined ? String(req.body.name).trim() : cur.name,
           req.body.description !== undefined ?
@@ -328,9 +354,10 @@ app.put(
       // DB updated successfully, now it is safe to remove the old files.
       if (images !== oldImages) await deleteImages(oldImages);
 
-      const [rows] = await pool.query('SELECT * FROM products WHERE id = ?', [
-        id,
-      ]);
+      const [rows] = await pool.query(
+        'SELECT * FROM products WHERE id = ? AND is_active = 1',
+        [id],
+      );
       res.json(toProduct(rows[0]));
     } catch (e) {
       if (!imagesSaved) await deleteImages(newImages);
@@ -339,17 +366,15 @@ app.put(
   },
 );
 
-// Delete product + its image file
+// Soft-delete product
 app.delete('/api/products/:id', async (req, res, next) => {
   try {
-    const [rows] = await pool.query(
-      'SELECT images FROM products WHERE id = ?',
+    const [result] = await pool.query(
+      'UPDATE products SET is_active = 0, deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND is_active = 1',
       [req.params.id],
     );
-    if (!rows.length)
+    if (!result.affectedRows)
       return res.status(404).json({ error: 'Product not found' });
-    await pool.query('DELETE FROM products WHERE id = ?', [req.params.id]);
-    await deleteImages(parseImageUrls(rows[0].images));
     res.json({ deleted: true });
   } catch (e) {
     next(e);

@@ -19,8 +19,10 @@ function createOrdersRouter(pool, requireAdmin, emailService) {
         : '';
       const quantity = Number(quantityText);
       const totalPriceText =
-        typeof body.total_price === 'number' ||
-        typeof body.total_price === 'string' ?
+        (
+          typeof body.total_price === 'number' ||
+          typeof body.total_price === 'string'
+        ) ?
           String(body.total_price).trim()
         : '';
       const totalPrice = Number(totalPriceText);
@@ -94,7 +96,8 @@ function createOrdersRouter(pool, requireAdmin, emailService) {
       } catch (error) {
         console.error('Failed to send order creation emails:', error);
         return res.status(502).json({
-          error: 'Order was created, but one or more notification emails failed',
+          error:
+            'Order was created, but one or more notification emails failed',
           order,
         });
       }
@@ -106,13 +109,27 @@ function createOrdersRouter(pool, requireAdmin, emailService) {
 
   router.get('/', async (req, res, next) => {
     try {
+      const requestedLimit =
+        req.query.limit === undefined ? 50 : Number(req.query.limit);
+      const offset =
+        req.query.offset === undefined ? 0 : Number(req.query.offset);
+      if (!Number.isSafeInteger(requestedLimit) || requestedLimit < 1)
+        return res.status(400).json({ error: 'limit must be a positive integer' });
+      if (!Number.isSafeInteger(offset) || offset < 0)
+        return res
+          .status(400)
+          .json({ error: 'offset must be a non-negative integer' });
+
+      const limit = Math.min(requestedLimit, 100);
       const [orders] = await pool.query(
         `SELECT orders.*,
                 products.name AS product_name,
                 JSON_UNQUOTE(JSON_EXTRACT(products.images, '$[0]')) AS product_image
          FROM orders
          INNER JOIN products ON products.id = orders.product_id
-         ORDER BY orders.id DESC`,
+         ORDER BY orders.id DESC
+         LIMIT ? OFFSET ?`,
+        [limit, offset],
       );
       res.json(orders);
     } catch (error) {
@@ -134,10 +151,9 @@ function createOrdersRouter(pool, requireAdmin, emailService) {
           error: `status must be one of: ${ORDER_STATUSES.join(', ')}`,
         });
 
-      const [existing] = await pool.query(
-        'SELECT * FROM orders WHERE id = ?',
-        [id],
-      );
+      const [existing] = await pool.query('SELECT * FROM orders WHERE id = ?', [
+        id,
+      ]);
       if (!existing.length)
         return res.status(404).json({ error: 'Order not found' });
       const previousStatus = existing[0].status;
@@ -151,16 +167,21 @@ function createOrdersRouter(pool, requireAdmin, emailService) {
         id,
       ]);
 
-      const [orders] = await pool.query('SELECT * FROM orders WHERE id = ?', [
-        id,
-      ]);
+      const [orders] = await pool.query(
+        `SELECT orders.*, products.name AS product_name
+         FROM orders
+         INNER JOIN products ON products.id = orders.product_id
+         WHERE orders.id = ?`,
+        [id],
+      );
       if (previousStatus !== status) {
         try {
           await emailService.sendOrderStatusEmail(orders[0]);
         } catch (error) {
           console.error('Failed to send order status email:', error);
           return res.status(502).json({
-            error: 'Order status was updated, but the notification email failed',
+            error:
+              'Order status was updated, but the notification email failed',
             order: orders[0],
           });
         }

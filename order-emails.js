@@ -8,18 +8,22 @@ function formatOrderDate(value) {
 }
 
 function createOrderEmailService() {
-  const host = process.env.SMTP_HOST;
-  const user = process.env.SMTP_USER;
-  const password = process.env.SMTP_PASS;
-  const adminEmail = process.env.ADMIN_EMAIL;
-  const from = process.env.MAIL_FROM || user;
-  const port = Number(process.env.SMTP_PORT || 587);
-  const secure = process.env.SMTP_SECURE === 'true';
+  const host = (process.env.SMTP_HOST || '').trim();
+  const user = (process.env.SMTP_USER || '').trim();
+  const password = process.env.SMTP_PASS || '';
+  const adminEmail = (process.env.ADMIN_EMAIL || '').trim();
+  const port = Number(process.env.SMTP_PORT || 465);
+  const secureSetting = process.env.SMTP_SECURE;
+  const secure =
+    secureSetting === undefined ? port === 465 : secureSetting === 'true';
   const isConfigured =
-    Boolean(host && user && password && adminEmail && from) &&
+    Boolean(host && user && password && adminEmail) &&
     Number.isInteger(port) &&
     port > 0 &&
-    port <= 65535;
+    port <= 65535 &&
+    (secureSetting === undefined ||
+      secureSetting === 'true' ||
+      secureSetting === 'false');
 
   const transporter =
     isConfigured ?
@@ -27,6 +31,7 @@ function createOrderEmailService() {
         host,
         port,
         secure,
+        requireTLS: !secure,
         auth: { user, pass: password },
         connectionTimeout: 10000,
         greetingTimeout: 10000,
@@ -35,6 +40,7 @@ function createOrderEmailService() {
     : null;
 
   async function sendAll(messages) {
+    if (!transporter) throw new Error('SMTP email settings are missing or invalid');
     const results = await Promise.allSettled(
       messages.map((message) => transporter.sendMail(message)),
     );
@@ -51,10 +57,21 @@ function createOrderEmailService() {
   return {
     isConfigured,
 
+    async sendTestEmail() {
+      if (!transporter) throw new Error('SMTP email settings are missing or invalid');
+      await transporter.verify();
+      await transporter.sendMail({
+        from: user,
+        to: adminEmail,
+        subject: 'Velaroqa SMTP email test',
+        text: 'SMTP email delivery is configured correctly.',
+      });
+    },
+
     async sendNewOrderEmails(order) {
       const orderDate = formatOrderDate(order.created_at);
       const customerMessage = {
-        from,
+        from: user,
         to: order.email,
         subject: `We received your order #${order.id}`,
         text: [
@@ -63,13 +80,14 @@ function createOrderEmailService() {
           `We received your order #${order.id}. Its current status is pending.`,
           'We will email you as soon as there is an update.',
           '',
+          `Product: ${order.product_name}`,
           `Quantity: ${order.quantity}`,
           `Total price: ${order.total_price}`,
           `Order date: ${orderDate}`,
         ].join('\n'),
       };
       const adminMessage = {
-        from,
+        from: user,
         to: adminEmail,
         subject: `New order #${order.id}`,
         text: [
@@ -93,7 +111,7 @@ function createOrderEmailService() {
     async sendOrderStatusEmail(order) {
       await sendAll([
         {
-          from,
+          from: user,
           to: order.email,
           subject: `Your order #${order.id} is ${order.status}`,
           text: [
@@ -101,6 +119,7 @@ function createOrderEmailService() {
             '',
             `The status of your order #${order.id} has been updated to: ${order.status}.`,
             '',
+            `Product: ${order.product_name}`,
             `Quantity: ${order.quantity}`,
             `Total price: ${order.total_price}`,
             `Order date: ${formatOrderDate(order.created_at)}`,
